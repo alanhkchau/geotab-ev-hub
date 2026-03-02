@@ -1,50 +1,119 @@
-<!DOCTYPE html><html><head><meta charset='utf-8'>
-<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>
-<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
-<style>
-  @keyframes pulse { 0% { border-color: #334155; } 50% { border-color: #ef4444; box-shadow: 0 0 15px #ef4444; } 100% { border-color: #334155; } }
-  .card { background:#1e293b; border:2px solid #334155; padding:20px; border-radius:16px; margin-bottom:20px; }
-  .low-battery { animation: pulse 2s infinite; border-width: 3px; }
-</style></head>
-<body style='margin:0;padding:20px;font-family:sans-serif;background:#0f172a;color:#f8fafc;'>
-<div id='ev-grid' style='display:grid;grid-template-columns:repeat(auto-fill, minmax(350px, 1fr));gap:20px;'></div>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>EV Maintenance Hub v1.7</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    
+    <style>
+        body { margin:0; padding:20px; font-family: 'Segoe UI', sans-serif; background:#0f172a; color:#f8fafc; }
+        #ev-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(380px, 1fr)); gap:25px; }
+        .header-bar { display:flex; justify-content:space-between; align-items:center; margin-bottom:30px; border-bottom:1px solid #334155; padding-bottom:15px; }
+        
+        /* Refresh Button Styling */
+        #refresh-btn { background: #10b981; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+        #refresh-btn:hover { background: #059669; }
+        #refresh-btn:disabled { background: #334155; cursor: not-allowed; }
+
+        /* Map & Card Optimization */
+        .leaflet-container { background: #1e293b !important; }
+        .card { background:#1e293b; border:2px solid #334155; padding:20px; border-radius:16px; position: relative; }
+        .map-frame { height:180px; border-radius:10px; margin:15px 0; background:#0f172a; }
+        
+        @keyframes alert-pulse { 
+            0% { border-color: #334155; } 
+            50% { border-color: #ef4444; box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); } 
+            100% { border-color: #334155; } 
+        }
+        .critical { animation: alert-pulse 2s infinite; border-width: 2px; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <h1 style="color:#10b981; margin:0; font-size:24px;">⚡ EV Fleet Health</h1>
+        <button id="refresh-btn">🔄 Refresh Data</button>
+    </div>
+    <div id="ev-grid"></div>
+
 <script>
 geotab.addin['ev-maintenance-hub'] = function () {
-  return {
-    initialize: function (api, state, callback) {
-      const apiKey = '1f8d4ccf-672a-4321-a636-e185900d38be';
-      api.multiCall([
-        ['Get', { typeName: 'Device' }],
-        ['Get', { typeName: 'DeviceStatusInfo' }],
-        ['Get', { typeName: 'StatusData', search: { diagnosticSearch: { id: 'DiagnosticStateOfChargeId' }, latestOnly: true } }],
-        ['Get', { typeName: 'StatusData', search: { diagnosticSearch: { id: 'DiagnosticBatteryStateOfHealthId' }, latestOnly: true } }]
-      ], function (results) {
-        const [devs, locs, socs, sohs] = results;
+    let _api;
+
+    const renderFleet = (api) => {
+        const btn = document.getElementById('refresh-btn');
         const container = document.getElementById('ev-grid');
-        devs.forEach((dev, i) => {
-          const soc = (socs.find(s => s.device.id === dev.id) || {data:0}).data;
-          const soh = (sohs.find(s => s.device.id === dev.id) || {data:100}).data;
-          const loc = locs.find(l => l.device.id === dev.id) || {latitude:0, longitude:0};
-          const isLow = soc < 20;
-          
-          const card = document.createElement('div');
-          card.className = 'card' + (isLow ? ' low-battery' : '');
-          card.innerHTML = `<h3>${dev.name}</h3><div id="map-${i}" style="height:150px; border-radius:8px;"></div>
-                            <p>SOC: ${soc}% | SOH: ${soh.toFixed(1)}%</p>`;
-          container.appendChild(card);
-          
-          const map = L.map(`map-${i}`, {zoomControl:false}).setView([loc.latitude, loc.longitude], 12);
-          L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-          L.circleMarker([loc.latitude, loc.longitude], {color:'#38bdf8', radius:8}).addTo(map);
-          
-          fetch(`https://api.openchargemap.io/v3/poi/?key=${apiKey}&latitude=${loc.latitude}&longitude=${loc.longitude}&distance=20&levelid=3&maxresults=1`)
-            .then(r => r.json()).then(data => {
-              if(data[0]) L.circleMarker([data[0].AddressInfo.Latitude, data[0].AddressInfo.Longitude], {color:'#10b981', radius:6}).addTo(map);
+        const apiKey = '1f8d4ccf-672a-4321-a636-e185900d38be';
+        
+        btn.disabled = true;
+        btn.textContent = 'Updating...';
+        container.style.opacity = '0.5';
+
+        api.multiCall([
+            ['Get', { typeName: 'Device' }],
+            ['Get', { typeName: 'DeviceStatusInfo' }],
+            ['Get', { typeName: 'StatusData', search: { diagnosticSearch: { id: 'DiagnosticStateOfChargeId' }, latestOnly: true } }],
+            ['Get', { typeName: 'StatusData', search: { diagnosticSearch: { id: 'DiagnosticBatteryStateOfHealthId' }, latestOnly: true } }]
+        ], function (results) {
+            container.innerHTML = ''; // Clear old cards
+            container.style.opacity = '1';
+            const [devs, locs, socs, sohs] = results;
+
+            devs.forEach((dev, i) => {
+                const soc = (socs.find(s => s.device.id === dev.id) || {data:0}).data;
+                const soh = (sohs.find(s => s.device.id === dev.id) || {data:100}).data;
+                const loc = locs.find(l => l.device.id === dev.id) || {latitude:0, longitude:0};
+                const isLow = soc < 20;
+
+                const card = document.createElement('div');
+                card.className = 'card' + (isLow ? ' critical' : '');
+                const mapId = `map-${i}`;
+                
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between;">
+                        <strong style="color:#10b981">${dev.name}</strong>
+                        <span style="font-size:12px; color:${isLow?'#ef4444':'#94a3b8'}">${soc}% SOC</span>
+                    </div>
+                    <div id="${mapId}" class="map-frame"></div>
+                    <div style="font-size:11px; color:#94a3b8; display:flex; justify-content:space-between;">
+                        <span>Health: ${soh.toFixed(1)}%</span>
+                        <span id="dcfc-${i}">Finding Charger...</span>
+                    </div>
+                `;
+                container.appendChild(card);
+
+                const map = L.map(mapId, {zoomControl:false, attributionControl:false}).setView([loc.latitude, loc.longitude], 13);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', keepBuffer: 8 }).addTo(map);
+                L.circleMarker([loc.latitude, loc.longitude], {color:'#38bdf8', radius:7, fillOpacity:1}).addTo(map);
+
+                fetch(`https://api.openchargemap.io/v3/poi/?key=${apiKey}&latitude=${loc.latitude}&longitude=${loc.longitude}&distance=15&levelid=3&maxresults=1`)
+                    .then(r => r.json()).then(data => {
+                        if(data[0]) {
+                            const p = data[0];
+                            const kw = p.Connections[0].PowerKW || 50;
+                            L.circleMarker([p.AddressInfo.Latitude, p.AddressInfo.Longitude], {color:'#10b981', radius:5, fillOpacity:1}).addTo(map);
+                            document.getElementById(`dcfc-${i}`).innerHTML = `Next: ${p.AddressInfo.Title} (${kw}kW)`;
+                        }
+                    });
             });
+            
+            btn.disabled = false;
+            btn.textContent = '🔄 Refresh Data';
+        }, err => {
+            console.error(err);
+            btn.disabled = false;
         });
-        callback();
-      });
-    }
-  };
+    };
+
+    return {
+        initialize: function (api, state, callback) {
+            _api = api;
+            document.getElementById('refresh-btn').addEventListener('click', () => renderFleet(_api));
+            renderFleet(_api);
+            callback();
+        }
+    };
 };
-</script></body></html>
+</script>
+</body>
+</html>
