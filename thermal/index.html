@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>EV Thermal Guardian v2.1</title>
+    <style>
+        body { margin:0; padding:20px; font-family: 'Segoe UI', Tahoma, sans-serif; background:#0f172a; color:#f8fafc; }
+        .header-bar { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; padding-bottom:15px; margin-bottom:25px; }
+        #ev-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:25px; }
+        
+        .card { background:#1e293b; border:2px solid #334155; padding:20px; border-radius:16px; transition: 0.3s; position: relative; }
+        .delta-container { text-align: center; padding: 15px 0; border-radius: 12px; margin: 10px 0; background: rgba(15, 23, 42, 0.5); }
+        .delta-value { font-size: 32px; font-weight: 800; }
+        
+        /* Status Colors */
+        .status-ok { color: #10b981; }
+        .status-warn { color: #fbbf24; }
+        .status-crit { color: #ef4444; animation: pulse-border 1.5s infinite; }
+        
+        @keyframes pulse-border { 
+            0% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0px rgba(239, 68, 68, 0); }
+        }
+
+        .sensor-table { width: 100%; font-size: 12px; margin-top: 15px; border-top: 1px solid #334155; padding-top: 10px; }
+        .sensor-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+        .label { color: #94a3b8; }
+        
+        #refresh-btn { background:#10b981; color:white; border:none; padding:10px 20px; border-radius:8px; cursor:pointer; font-weight:600; }
+        #refresh-btn:hover { background:#059669; }
+        .tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #334155; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <div class="header-bar">
+        <div>
+            <h1 style="color:#10b981; margin:0; font-size:22px;">🌡️ EV Thermal Guardian <span style="font-size:12px; color:#94a3b8;">v2.1</span></h1>
+            <p style="margin:5px 0 0 0; font-size:12px; color:#64748b;">Diagnostic: Cooling System & Sensor Integrity</p>
+        </div>
+        <button id="refresh-btn">🔄 Scan Fleet</button>
+    </div>
+    <div id="ev-grid"></div>
+
+<script>
+geotab.addin['ev-maintenance-hub'] = function () {
+    let _api;
+
+    const runDiagnostics = (api) => {
+        const container = document.getElementById('ev-grid');
+        const btn = document.getElementById('refresh-btn');
+        btn.textContent = 'Scanning CAN-bus...';
+        container.style.opacity = '0.5';
+
+        api.multiCall([
+            ['Get', { typeName: 'Device' }],
+            ['Get', { typeName: 'DeviceStatusInfo' }],
+            ['Get', { typeName: 'StatusData', search: { diagnosticSearch: { id: 'DiagnosticInternalBatteryTemperatureId' }, latestOnly: true } }],
+            ['Get', { typeName: 'StatusData', search: { diagnosticSearch: { id: 'DiagnosticAmbientAirTemperatureId' }, latestOnly: true } }]
+        ], function (results) {
+            container.innerHTML = '';
+            container.style.opacity = '1';
+            const [devs, locs, battTemps, ambTemps] = results;
+
+            devs.forEach((dev, i) => {
+                const bTemp = (battTemps.find(t => t.device.id === dev.id) || {data: 28}).data;
+                const aTemp = (ambTemps.find(t => t.device.id === dev.id) || {data: 20}).data;
+                const loc = locs.find(l => l.device.id === dev.id) || {latitude: 45.5, longitude: -73.5};
+                
+                const delta = bTemp - aTemp;
+                let statusClass = 'status-ok';
+                let diagnosticNote = 'Cooling Normal';
+
+                if (delta > 22) { statusClass = 'status-warn'; diagnosticNote = 'Inspect Coolant Filter'; }
+                if (delta > 32) { statusClass = 'status-crit'; diagnosticNote = 'PUMP INEFFICIENCY ALERT'; }
+
+                const card = document.createElement('div');
+                card.className = 'card' + (delta > 32 ? ' status-crit' : '');
+                const weatherId = `weather-${i}`;
+                
+                card.innerHTML = `
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong style="color:#10b981;">${dev.name}</strong>
+                        <span class="tag">Active</span>
+                    </div>
+                    <div class="delta-container">
+                        <div class="label" style="font-size:10px;">THERMAL DELTA (ΔT)</div>
+                        <div class="delta-value ${statusClass}">${delta.toFixed(1)}°C</div>
+                        <div style="font-size:11px; font-weight:600;" class="${statusClass}">${diagnosticNote}</div>
+                    </div>
+                    <div class="sensor-table">
+                        <div class="sensor-row"><span class="label">Battery Module:</span><span>${bTemp.toFixed(1)}°C</span></div>
+                        <div class="sensor-row"><span class="label">Ambient (Sensor):</span><span>${aTemp.toFixed(1)}°C</span></div>
+                        <div id="${weatherId}" class="sensor-row"><span class="label">Local Weather:</span><span>Loading...</span></div>
+                    </div>
+                `;
+                container.appendChild(card);
+
+                // External Weather Cross-Reference (Open-Meteo)
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}&current_weather=true`)
+                    .then(r => r.json())
+                    .then(weather => {
+                        const trueTemp = weather.current_weather.temperature;
+                        const sensorDrift = Math.abs(trueTemp - aTemp);
+                        const weatherElement = document.getElementById(weatherId);
+                        
+                        let driftHtml = sensorDrift > 8 ? ' <span style="color:#fbbf24;">⚠️ SENSOR DRIFT</span>' : ' <span style="color:#10b981;">✓</span>';
+                        weatherElement.innerHTML = `<span class="label">True Ambient:</span><span>${trueTemp}°C${driftHtml}</span>`;
+                    }).catch(() => {
+                        document.getElementById(weatherId).innerHTML = '<span class="label">Weather:</span><span>Service Unavailable</span>';
+                    });
+            });
+            btn.textContent = '🔄 Scan Fleet';
+        });
+    };
+
+    return {
+        initialize: function (api, state, callback) {
+            _api = api;
+            document.getElementById('refresh-btn').onclick = () => runDiagnostics(_api);
+            runDiagnostics(_api);
+            callback();
+        }
+    };
+};
+</script>
+</body>
+</html>
