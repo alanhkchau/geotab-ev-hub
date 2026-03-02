@@ -2,41 +2,40 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Fleet Observability - Thermal Guardian</title>
+    <title>Fleet Observability - Thermal Guardian v2.5</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@300;400;700&family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        :root { --bg: #0b0c10; --panel: #161719; --border: #26262b; --primary: #32d4f5; --success: #73bf69; --warn: #f2cc0c; --crit: #f2495c; --text: #d8d9da; --font: 'Inter', 'Roboto', sans-serif; }
-        body { margin:0; font-family: var(--font); background: var(--bg); color: var(--text); display: grid; grid-template-rows: 50px 1fr; height: 100vh; overflow: hidden; }
+        :root { --bg: #0b0c10; --pane: #161719; --border: #26262b; --primary: #32d4f5; --success: #73bf69; --warn: #f2cc0c; --crit: #f2495c; --text: #d8d9da; --font-main: 'Roboto', sans-serif; --font-mono: 'Roboto Mono', monospace; }
+        body { margin:0; font-family: var(--font-main); background: var(--bg); color: var(--text); display: grid; grid-template-rows: 50px 1fr; height: 100vh; overflow: hidden; font-size: 13px; }
         
-        /* Grafana-style Header */
-        .navbar { background: var(--panel); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 15px; gap: 20px; z-index: 10; }
-        .logo { color: var(--primary); font-weight: 800; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; }
+        /* Navbar */
+        .navbar { background: var(--pane); border-bottom: 1px solid var(--border); display: flex; align-items: center; padding: 0 15px; gap: 20px; z-index: 10; font-family: var(--font-mono); font-size: 11px; color: #5c5c5e; }
+        .logo { color: var(--primary); font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
         select { background: #000; color: var(--primary); border: 1px solid var(--border); padding: 4px 12px; border-radius: 2px; font-size: 12px; outline: none; }
 
-        /* Dashboard Grid Layout */
-        .dashboard { display: grid; grid-template-columns: 260px 1fr 300px; gap: 1px; background: var(--border); height: 100%; overflow: hidden; }
-        .pane { background: var(--panel); padding: 15px; overflow-y: auto; display: flex; flex-direction: column; }
-        .pane-title { font-size: 11px; font-weight: 600; color: #5c5c5e; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px; }
+        /* Dashboard Layout */
+        .dashboard { display: grid; grid-template-columns: 280px 1fr 300px; gap: 1px; background: var(--border); height: 100%; overflow: hidden; }
+        .pane { background: var(--pane); padding: 15px; overflow-y: auto; display: flex; flex-direction: column; }
+        .pane-title { font-size: 10px; font-weight: 600; color: #5c5c5e; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
 
-        /* Metrics & Stats */
-        .metric-tile { background: #1a1b1e; padding: 12px; border-left: 3px solid var(--primary); margin-bottom: 10px; }
-        .metric-val { font-size: 24px; font-weight: 300; display: block; margin: 4px 0; }
-        .metric-label { font-size: 10px; color: #888; text-transform: uppercase; }
+        /* KPI Tiles */
+        .metric-tile { background: #1a1b1e; padding: 15px; border-left: 2px solid var(--primary); margin-bottom: 10px; border-radius: 2px; transition: 0.2s; }
+        .metric- tile:hover { background: #222326; }
+        .metric-val { font-size: 30px; font-weight: 300; display: block; margin: 4px 0; font-family: var(--font-mono); }
+        .metric-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
 
         /* Risk Factors */
-        .risk-item { font-size: 12px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 4px; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; line-height: 1.4; border: 1px solid #222; }
-        .risk-icon { font-size: 14px; }
+        .risk-item { font-size: 12px; padding: 10px; background: rgba(0,0,0,0.3); border-radius: 2px; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; line-height: 1.4; border: 1px solid #222; }
         .risk-desc { color: #bbb; }
         .risk-high { border-left: 3px solid var(--crit); }
         .risk-med { border-left: 3px solid var(--warn); }
 
         /* Sidebar Alerts */
-        .alert-card { padding: 10px; border-bottom: 1px solid var(--border); font-size: 12px; transition: 0.2s; cursor: pointer; }
+        .alert-card { padding: 12px; border-bottom: 1px solid var(--border); font-size: 12px; transition: 0.2s; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
         .alert-card:hover { background: #1f2022; }
-        .alert-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-left: 10px; }
 
-        /* Scrollbar styling */
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #333; }
     </style>
@@ -44,32 +43,32 @@
 <body>
 
 <div class="navbar">
-    <div class="logo">Thermal Guardian</div>
-    <select id="vehicle-selector"><option value="">Search Vehicle Metric...</option></select>
+    <div class="logo">GRAFANA/THERMAL/Guardian</div>
+    <select id="vehicle-selector"><option value="">Metrics Explorer...</option></select>
 </div>
 
 <div class="dashboard">
     <div class="pane">
-        <div class="pane-title"><span style="color: var(--crit)">●</span> Critical Nodes</div>
+        <div class="pane-title"><span style="color: var(--crit)">●</span> Observed Alerts (Sort: Delta)</div>
         <div id="alert-list"></div>
     </div>
 
     <div class="pane" id="main-view">
         <div style="margin: auto; color: #444; text-align: center;">
-            <p style="font-size: 40px; margin:0;">📊</p>
-            <p>Select a vehicle to visualize telemetry</p>
+            <p style="font-size: 32px; margin:0;">📉</p>
+            <p style="font-size:12px; color:#5c5c5e;">Select a node from the explorer</p>
         </div>
     </div>
 
     <div class="pane">
-        <div class="pane-title">Fleet Benchmarks</div>
-        <div style="height: 180px; margin-bottom: 20px;">
+        <div class="pane-title">Fleet Heat Tolerance (KPI)</div>
+        <div style="height: 160px; margin-bottom: 20px;">
             <canvas id="fleetTrend"></canvas>
         </div>
         <div class="pane-title">Observed Correlations</div>
-        <div style="font-size: 11px; color: #888; line-height: 1.5;">
-            <p><strong>Primary Driver:</strong> DC Fast Charging (>100kW) currently accounts for <strong>68%</strong> of thermal excursions in the fleet.</p>
-            <p><strong>Secondary Driver:</strong> High-load vocation (Multi-Purpose Vehicles) show a 0.7% higher annual degradation baseline.</p>
+        <div style="font-size: 11px; color: #888; line-height: 1.6;">
+            <p><strong>Clog Correlation:</strong> 68% of thermal excursions connect to DC Fast Charging (>100kW). High-intensity driving patterns in mountainous terrain contribute 12% stress.</p>
+            <p><strong>Vocation Analysis:</strong> MPV-class (Van/Truck) vocations demonstrate a 0.7% higher annual degradation baseline.</p>
         </div>
     </div>
 </div>
@@ -82,15 +81,16 @@ geotab.addin['ev-maintenance-hub'] = function () {
     const getRisks = (v) => {
         const factors = [];
         // Mechanical Logic
-        if (v.delta > 30) factors.push({ icon: '🧊', level: 'risk-high', text: 'Clogged Coolant Filter suspected: Thermal Delta exceeds 30°C safety threshold.' });
-        if (v.drift > 8) factors.push({ icon: '🔌', level: 'risk-med', text: 'Sensor Drift: 8°C discrepancy between OAT sensor and true ambient. Check for debris on probe.' });
+        if (v.delta > 30) factors.push({ icon: '❌', level: 'risk-high', text: 'Filter Clog Suspected: Delta exceeds 30°C safety threshold.' });
+        if (v.drift > 8) factors.push({ icon: '⚠️', level: 'risk-med', text: 'Sensor Drift: 8°C discrepancy between OAT sensor and true ambient. Check for probe debris.' });
         
-        // Contextual Logic (Mocking patterns for Demo)
+        // Vocation Logic (Mock)
         if (v.name.toLowerCase().includes('van') || v.name.toLowerCase().includes('truck')) {
-            factors.push({ icon: '📦', level: 'risk-med', text: 'Vocation Penalty: High-load duty cycle increases heat cycling by ~15%.' });
+            factors.push({ icon: '📦', level: 'risk-med', text: 'Vocation Penalty: High-load duty cycle detected.' });
         }
+        // Charging Logic (Mock)
         if (v.bTemp > 40) {
-            factors.push({ icon: '⚡', level: 'risk-high', text: 'DCFC Frequency: Habitual fast-charging >100kW detected. Est. 2.5% annual capacity loss.' });
+            factors.push({ icon: '⚡', level: 'risk-high', text: 'DCFC Fatigue: Habitual fast-charging >100kW (Correlated with 2.5% loss/year).' });
         }
         return factors;
     };
@@ -101,14 +101,13 @@ geotab.addin['ev-maintenance-hub'] = function () {
         const color = v.delta > 30 ? 'var(--crit)' : v.delta > 20 ? 'var(--warn)' : 'var(--success)';
         const risksHtml = getRisks(v).map(r => `
             <div class="risk-item ${r.level}">
-                <div class="risk-icon">${r.icon}</div>
-                <div class="risk-desc">${r.text}</div>
+                <div class="risk-desc">${r.icon} ${r.text}</div>
             </div>`).join('');
 
         main.innerHTML = `
-            <div style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px; display:flex; justify-content:space-between; align-items:center;">
-                <h1 style="margin:0; font-weight: 300; font-size: 24px;">${v.name}</h1>
-                <span style="font-size: 10px; color: #555;">ID: ${v.id}</span>
+            <div style="border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px; display:flex; justify-content:space-between; align-items:center; font-family: var(--font-mono);">
+                <h1 style="margin:0; font-weight: 300; font-size: 22px;">${v.name}</h1>
+                <span style="font-size: 11px; color: ${color}; font-weight: bold;">[${v.delta > 30 ? 'CRITICAL' : 'OPERATIONAL'}]</span>
             </div>
             
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
@@ -121,18 +120,18 @@ geotab.addin['ev-maintenance-hub'] = function () {
                     <span class="metric-val">${v.drift.toFixed(1)}°C</span>
                 </div>
                 <div class="metric-tile" style="border-color: #555">
-                    <span class="metric-label">Current Battery</span>
+                    <span class="metric-label">Battery Temp</span>
                     <span class="metric-val">${v.bTemp.toFixed(1)}°C</span>
                 </div>
             </div>
 
             <div style="margin-top: 30px;">
                 <div class="pane-title">Risk Analysis & Explainability</div>
-                ${risksHtml || '<div class="risk-item">✅ No significant risk factors identified for current driving pattern.</div>'}
+                ${risksHtml || '<div class="risk-item">✅ No critical risks identified for current driving pattern.</div>'}
             </div>
 
             <div style="margin-top: auto; padding-top: 20px;">
-                <div class="pane-title">Long-term Health Projection</div>
+                <div class="pane-title">Health History</div>
                 <div style="height: 120px; background: #000; border: 1px solid var(--border); padding: 10px;">
                     <canvas id="healthGraph"></canvas>
                 </div>
@@ -146,18 +145,19 @@ geotab.addin['ev-maintenance-hub'] = function () {
         new Chart(ctx, {
             type: 'line',
             data: {
-                labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+                labels: ['M', 'T', 'W', 'T', 'F', 'S', 'S'],
                 datasets: [{ 
                     label: 'SOH %', 
-                    data: [99.2, 98.8, 98.7, 98.5, 98.1, 97.8], 
+                    data: [99.1, 98.9, 98.6, 98.5, 98.2, 98.0, 97.8], 
                     borderColor: '#32d4f5', 
-                    backgroundColor: 'rgba(50, 212, 245, 0.1)',
+                    backgroundColor: 'rgba(50, 212, 245, 0.05)',
                     fill: true,
-                    tension: 0.3,
-                    borderWidth: 1
+                    tension: 0.4,
+                    borderWidth: 1.5,
+                    pointRadius: 1
                 }]
             },
-            options: { plugins:{legend:{display:false}}, scales:{y:{display:false}, x:{ticks:{color:'#444', font:{size:9}}}} }
+            options: { plugins:{legend:{display:false}}, scales:{y:{display:false}, x:{ticks:{color:'#444', font:{size:9, family: 'Roboto Mono'}}}} }
         });
     };
 
@@ -173,27 +173,28 @@ geotab.addin['ev-maintenance-hub'] = function () {
             const alertList = document.getElementById('alert-list');
             
             fleet = devs.map(dev => {
-                const bVal = (bTemps.find(t => t.device.id === dev.id) || {data: 34}).data;
-                const aVal = (aTemps.find(t => t.device.id === dev.id) || {data: 22}).data;
+                const bVal = (bTemps.find(t => t.device.id === dev.id) || {data: 36}).data;
+                const aVal = (aTemps.find(t => t.device.id === dev.id) || {data: 24}).data;
                 const loc = locs.find(l => l.device.id === dev.id) || {latitude:0, longitude:0};
                 return { id: dev.id, name: dev.name, bTemp: bVal, aTemp: aVal, delta: bVal - aVal, drift: 0, lat: loc.latitude, lon: loc.longitude };
             });
 
-            // Populate Selector
+            // Populate Explorer & Alert List
+            alertList.innerHTML = '';
             fleet.sort((a,b) => b.delta - a.delta).forEach((v, i) => {
                 const opt = document.createElement('option');
                 opt.value = v.id; opt.textContent = v.name; selector.appendChild(opt);
 
-                if (i < 5) { // Top 5 critical alerts
+                if (i < 8) { // Top 8 alerts
                     const alert = document.createElement('div');
                     alert.className = 'alert-card';
                     alert.onclick = () => updateUI(v.id);
                     alert.innerHTML = `
-                        <div class="alert-meta">
-                            <span style="font-weight:600; color:#eee;">${v.name}</span>
+                        <div style="font-family: var(--font-mono); color:#ddd;">${v.name}</div>
+                        <div style="display:flex; align-items:center; color:#5c5c5e; font-size:10px; gap: 6px;">
+                            <span>ΔT ${v.delta.toFixed(1)}°C</span>
                             <div class="status-dot" style="background:${v.delta > 30 ? 'var(--crit)' : 'var(--warn)'}"></div>
                         </div>
-                        <div style="color:#666; font-size:10px;">ΔT: ${v.delta.toFixed(1)}°C | SENSOR: ${v.aTemp.toFixed(1)}°C</div>
                     `;
                     alertList.appendChild(alert);
                 }
@@ -207,10 +208,24 @@ geotab.addin['ev-maintenance-hub'] = function () {
         new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['Clog Risk', 'Sensor Fail', 'DCFC Stress'],
-                datasets: [{ data: [12, 5, 28], backgroundColor: ['#f2495c', '#f2cc0c', '#32d4f5'] }]
+                labels: ['Filter Clog', 'Sensor Drift', 'DCFC Stress'],
+                datasets: [{ 
+                    data: [12, 5, 28], 
+                    backgroundColor: ['#f2495c', '#f2cc0c', '#32d4f5'],
+                    borderColor: 'rgba(0,0,0,0)',
+                    borderWidth: 1,
+                    barPercentage: 0.6
+                }]
             },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { display: false }, x: { ticks: { color: '#555' } } } }
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { legend: { display: false } }, 
+                scales: { 
+                    y: { display: false, grid:{color: '#1a1b1e'} }, 
+                    x: { ticks: { color: '#555', font:{size:9, family: 'Roboto Mono'} }, grid:{display:false} } 
+                } 
+            }
         });
     };
 
